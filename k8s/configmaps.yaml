@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────
+# ConfigMap — Backend Environment (non-secret values)
+# ─────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: tripline
+data:
+  NODE_ENV: "production"
+  PORT: "8080"
+  FRONTEND_URL: "https://tripline.com"
+  BREVO_SENDER_EMAIL: "nitant.j@ahduni.edu.in"
+  AVIATIONSTACK_API_KEY: "877d95a08953e2609d81fa64992be183"
+  RAPIDAPI_RAILWAY_HOST: "irctc1.p.rapidapi.com"
+  Hostname: "db.freesql.com"
+  Port: "1521"
+  Service_Name: "23ai_34ui2"
+
+---
+# ─────────────────────────────────────────────────────
+# ConfigMap — Frontend Environment
+# ─────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: tripline
+data:
+  VITE_API_BASE_URL: "https://tripline.com/api"

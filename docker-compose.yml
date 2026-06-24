@@ -1,0 +1,124 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────
+# Networks
+# ─────────────────────────────────────────────
+networks:
+  tripline-net:
+    driver: bridge
+
+# ─────────────────────────────────────────────
+# Volumes
+# ─────────────────────────────────────────────
+volumes:
+  redis-data:
+
+# ─────────────────────────────────────────────
+# Services
+# ─────────────────────────────────────────────
+services:
+
+  # ── Redis ───────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: tripline-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning --requirepass ${REDIS_PASSWORD:-tripline_redis_secret}
+    volumes:
+      - redis-data:/data
+    networks:
+      - tripline-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-tripline_redis_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend ─────────────────────────────────
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: tripline-backend
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      # Redis — connects to the Redis service by container name
+      REDIS_URL: redis://:${REDIS_PASSWORD:-tripline_redis_secret}@redis:6379
+      # JWT
+      JWT_SECRET: ${JWT_SECRET}
+      # Stripe
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      # Brevo
+      BREVO_API_KEY: ${BREVO_API_KEY}
+      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL}
+      # Oracle DB
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_USERNAME: ${DATABASE_USERNAME}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      Hostname: ${Hostname}
+      Port: ${Port}
+      Service_Name: ${Service_Name}
+      # API Keys
+      AVIATIONSTACK_API_KEY: ${AVIATIONSTACK_API_KEY}
+      AMADEUS_CLIENT_ID: ${AMADEUS_CLIENT_ID}
+      AMADEUS_CLIENT_SECRET: ${AMADEUS_CLIENT_SECRET}
+      RAPIDAPI_KEY: ${RAPIDAPI_KEY}
+      RAPIDAPI_RAILWAY_HOST: ${RAPIDAPI_RAILWAY_HOST}
+      RAPIDAPI_BUS_KEY: ${RAPIDAPI_BUS_KEY}
+      RAPIDAPI_BUS_HOST: ${RAPIDAPI_BUS_HOST}
+      # Frontend URL (for CORS)
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+    networks:
+      - tripline-net
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  # ── Frontend ────────────────────────────────
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: tripline-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - tripline-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── NGINX Reverse Proxy / Load Balancer ─────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: tripline-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+      - backend
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro          # Mount your SSL certs here
+    networks:
+      - tripline-net
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

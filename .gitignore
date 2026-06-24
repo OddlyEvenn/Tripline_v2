@@ -34,3 +34,10 @@ Thumbs.db
 *.njsproj
 *.sln
 *.swp
+
+# Kubernetes — NEVER commit real secret values
+# Edit k8s/secrets.yaml with placeholder base64 values only
+nginx/ssl/
+
+# Docker
+.dockerignore

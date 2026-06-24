@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Redis Service (ClusterIP — internal only)
+# ─────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: tripline
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+
+---
+# ─────────────────────────────────────────────────────────────────────────
+# Backend Service (ClusterIP — exposed to Ingress only)
+# ─────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: tripline
+  labels:
+    app: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+
+---
+# ─────────────────────────────────────────────────────────────────────────
+# Frontend Service (ClusterIP — exposed to Ingress only)
+# ─────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: tripline
+  labels:
+    app: frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http
