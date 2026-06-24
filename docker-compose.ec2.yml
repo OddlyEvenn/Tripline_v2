@@ -1,0 +1,114 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────
+# docker-compose.ec2.yml — Production compose for AWS EC2 deployment
+#
+# Key differences from docker-compose.yml:
+#   1. Uses nginx.local.conf (HTTP-only) — no SSL cert dependency.
+#      Add SSL later via Certbot/Let's Encrypt on the EC2 host.
+#   2. Uses env_file: .env instead of inline environment block,
+#      so all variables are picked up automatically from the .env
+#      that CI writes to the EC2 instance before deploying.
+#   3. Exposes only port 80 (add 443 once SSL certs are provisioned).
+# ─────────────────────────────────────────────────────────────────────────
+
+networks:
+  tripline-net:
+    driver: bridge
+
+volumes:
+  redis-data:
+
+services:
+
+  # ── Redis ─────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: tripline-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning --requirepass ${REDIS_PASSWORD:-tripline_redis_secret}
+    volumes:
+      - redis-data:/data
+    networks:
+      - tripline-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-tripline_redis_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend ───────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: tripline-backend
+    restart: unless-stopped
+    # Inject all env vars from the .env file written by CI on the EC2 instance
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      # Override REDIS_URL to point to the redis service container
+      REDIS_URL: redis://:${REDIS_PASSWORD:-tripline_redis_secret}@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - tripline-net
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  # ── Frontend ──────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: tripline-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - tripline-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # ── NGINX Reverse Proxy ───────────────────────────────────────────────
+  # Uses HTTP-only config (nginx.local.conf) — no SSL certs required.
+  # To add HTTPS later:
+  #   1. Install Certbot on EC2: sudo apt install certbot
+  #   2. Obtain cert: sudo certbot certonly --standalone -d yourdomain.com
+  #   3. Copy certs into ./nginx/ssl/
+  #   4. Switch this volume to ./nginx/nginx.conf (the SSL version)
+  #   5. Add "443:443" to ports below
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: tripline-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # - "443:443"   # Uncomment after SSL certs are provisioned
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      # HTTP-only config (no SSL dependency) — safe for raw EC2 IP or pre-cert domain
+      - ./nginx/nginx.local.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - tripline-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/nginx-health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

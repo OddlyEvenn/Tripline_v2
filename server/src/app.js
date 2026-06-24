@@ -1,4 +1,7 @@
-require('dotenv').config({ path: '../.env' });
+// Load .env from project root — works both locally (server/src/app.js → ../../.env)
+// and inside Docker (/app/src/app.js → /app/.env via path resolution)
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
