@@ -1,0 +1,67 @@
+# ─────────────────────────────────────────────────────────────────────────
+# GitHub Actions CI Pipeline — TripLine
+#
+# Triggers on push to any branch and pull requests targeting main.
+# Steps:
+#   1. Build backend Docker image  (no push)
+#   2. Build frontend Docker image (no push)
+# ─────────────────────────────────────────────────────────────────────────
+
+name: TripLine CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────
+  # JOB 1: Build Backend Image
+  # ──────────────────────────────────────────────────────────────────────
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          file: ./server/Dockerfile
+          push: false
+          tags: tripline-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ──────────────────────────────────────────────────────────────────────
+  # JOB 2: Build Frontend Image
+  # ──────────────────────────────────────────────────────────────────────
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          push: false
+          tags: tripline-frontend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
