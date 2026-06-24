@@ -22,7 +22,7 @@ function buildJourneySummary(tickets) {
 /**
  * Create Stripe Checkout Session
  */
-async function createCheckoutSession(userEmail, bookingId) {
+async function createCheckoutSession(userEmail, bookingId, frontendUrl) {
   if (!bookingId) {
     const err = new Error('Booking ID is required');
     err.status = 400;
@@ -68,10 +68,14 @@ async function createCheckoutSession(userEmail, bookingId) {
     console.log(`Creating Stripe session for booking ${bookingId} with amount ${amountInMinorUnit} paise`);
 
     // 2. Create Stripe Session
+    const baseFrontendUrl = frontendUrl || FRONTEND_URL;
+    const dynamicSuccessUrl = `${baseFrontendUrl}/booking-confirmation`;
+    const dynamicCancelUrl = `${baseFrontendUrl}/payment-cancelled`;
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
-      success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: cancelUrl,
+      success_url: `${dynamicSuccessUrl}?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: dynamicCancelUrl,
       line_items: [
         {
           quantity: 1,

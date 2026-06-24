@@ -74,7 +74,7 @@ services:
       RAPIDAPI_BUS_KEY: ${RAPIDAPI_BUS_KEY}
       RAPIDAPI_BUS_HOST: ${RAPIDAPI_BUS_HOST}
       # Frontend URL (for CORS) - routes locally over port 80
-      FRONTEND_URL: http://localhost
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
     networks:
       - tripline-net
     healthcheck:

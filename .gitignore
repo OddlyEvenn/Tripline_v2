@@ -41,3 +41,7 @@ nginx/ssl/
 
 # Docker
 .dockerignore
+
+# Server update instructions
+UPDATE_SERVER.md
+

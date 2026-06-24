@@ -8,7 +8,22 @@ async function createSession(req, res, next) {
     }
 
     const email = req.user.email;
-    const result = await paymentService.createCheckoutSession(email, parseInt(bookingId, 10));
+
+    // Dynamically resolve frontend origin to avoid hardcoded localhost redirects
+    let origin = req.get('origin');
+    if (!origin && req.get('referer')) {
+      try {
+        const refUrl = new URL(req.get('referer'));
+        origin = refUrl.origin;
+      } catch (e) {
+        // ignore malformed referer URLs
+      }
+    }
+    if (!origin) {
+      origin = process.env.FRONTEND_URL || 'http://localhost:5173';
+    }
+
+    const result = await paymentService.createCheckoutSession(email, parseInt(bookingId, 10), origin);
     res.status(200).json(result);
   } catch (err) {
     next(err);
