@@ -57,6 +57,8 @@ services:
       # Gmail SMTP
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
+      # Cookie Settings
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       # Oracle DB
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_USERNAME: ${DATABASE_USERNAME}

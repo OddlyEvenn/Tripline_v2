@@ -20,7 +20,7 @@ const generateToken = (res, email, role) => {
   // Set HTTP-only Cookie with JWT
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production', // true in production, false in development
+    secure: process.env.COOKIE_SECURE === 'true' || (process.env.NODE_ENV === 'production' && process.env.COOKIE_SECURE !== 'false'),
     sameSite: 'lax', // prevent CSRF while allowing general redirects
     maxAge: ACCESS_TOKEN_EXPIRATION
   });
@@ -36,7 +36,7 @@ const clearToken = (res) => {
   res.cookie(COOKIE_NAME, '', {
     httpOnly: true,
     expires: new Date(0),
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.COOKIE_SECURE === 'true' || (process.env.NODE_ENV === 'production' && process.env.COOKIE_SECURE !== 'false'),
     sameSite: 'lax'
   });
 };
