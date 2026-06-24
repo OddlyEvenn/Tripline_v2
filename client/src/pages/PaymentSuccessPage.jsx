@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
-import { bookingApi, ticketApi } from '../api/axios'
+import { bookingApi, ticketApi, paymentApi } from '../api/axios'
 import { CheckCircle, CheckCircle2, Ticket, ArrowRight, Home, LayoutDashboard, Download } from 'lucide-react'
 import { PageLoader } from '../components/Loaders'
 
@@ -12,25 +12,37 @@ export default function PaymentSuccessPage() {
     const [error, setError] = useState(false)
 
     useEffect(() => {
-        // The booking is confirmed via webhook. We poll once to get it.
-        const fetchBooking = async () => {
-            try {
-                const res = await bookingApi.getUserBookings()
-                const latest = res.data?.[0]
-                if (latest && latest.status === 'PAID') {
-                    setBooking(latest)
-                    setLoading(false)
-                } else {
-                    // Retry in 2 seconds if not yet PAID
-                    setTimeout(fetchBooking, 2000)
+        const confirmAndFetch = async () => {
+            const sessionId = params.get('session_id')
+            if (sessionId) {
+                try {
+                    // Force-confirm the session on the backend immediately
+                    await paymentApi.confirmSession(sessionId)
+                } catch (err) {
+                    console.warn('Manual session confirmation failed, falling back to polling:', err.message)
                 }
-            } catch {
-                setLoading(false)
-                setError(true)
             }
+
+            const fetchBooking = async () => {
+                try {
+                    const res = await bookingApi.getUserBookings()
+                    const latest = res.data?.[0]
+                    if (latest && latest.status === 'PAID') {
+                        setBooking(latest)
+                        setLoading(false)
+                    } else {
+                        // Retry in 2 seconds if not yet PAID
+                        setTimeout(fetchBooking, 2000)
+                    }
+                } catch {
+                    setLoading(false)
+                    setError(true)
+                }
+            }
+            fetchBooking()
         }
-        fetchBooking()
-    }, [])
+        confirmAndFetch()
+    }, [params])
 
     const handleDownload = async (ticketId) => {
         try {

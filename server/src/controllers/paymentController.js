@@ -34,7 +34,21 @@ async function handleWebhook(req, res, next) {
   }
 }
 
+async function confirmSession(req, res, next) {
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+    const result = await paymentService.confirmSession(sessionId);
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   createSession,
-  handleWebhook
+  handleWebhook,
+  confirmSession
 };

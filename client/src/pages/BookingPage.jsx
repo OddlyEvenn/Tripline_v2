@@ -277,7 +277,7 @@ export default function BookingPage() {
             })
             const bookingId = bookingRes.data.bookingId
             const sessionRes = await paymentApi.createSession({ bookingId })
-            window.location.href = sessionRes.data.sessionUrl
+            window.location.href = sessionRes.data.sessionUrl || sessionRes.data.url
         } catch (err) {
             toast.error(err.response?.data?.message || 'Booking failed. Please try again.')
             setLoading(false)

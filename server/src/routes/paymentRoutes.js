@@ -9,4 +9,7 @@ router.post('/webhook', paymentController.handleWebhook);
 // Protected session creation
 router.post('/create-session', protect, paymentController.createSession);
 
+// Protected session manual confirmation fallback
+router.post('/confirm-session', protect, paymentController.confirmSession);
+
 module.exports = router;

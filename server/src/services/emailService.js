@@ -1,48 +1,43 @@
-const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
-const BREVO_API_KEY = process.env.BREVO_API_KEY;
-const SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'nitant.j@ahduni.edu.in';
+const nodemailer = require('nodemailer');
+
+const SMTP_USER = process.env.SMTP_USER || 'highsweepsolutions@gmail.com';
+const SMTP_PASS = process.env.SMTP_PASS || 'onwx aesq jewd vkez';
 const SENDER_NAME = 'TripLine';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+// Create nodemailer transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: SMTP_USER,
+    pass: SMTP_PASS
+  }
+});
+
 /**
- * Send email helper calling Brevo API
+ * Send email helper using Nodemailer with Gmail SMTP
  */
 async function sendEmail(toEmail, toName, subject, htmlContent, attachments = null) {
-  if (!BREVO_API_KEY) {
-    console.warn('BREVO_API_KEY is not defined. Email send skipped.');
-    return;
-  }
-
   try {
-    const payload = {
-      sender: { name: SENDER_NAME, email: SENDER_EMAIL },
-      to: [{ email: toEmail, name: toName }],
-      subject,
-      htmlContent
+    const mailOptions = {
+      from: `"${SENDER_NAME}" <${SMTP_USER}>`,
+      to: `"${toName}" <${toEmail}>`,
+      subject: subject,
+      html: htmlContent
     };
 
     if (attachments && attachments.length > 0) {
-      payload.attachment = attachments; // Array of { content, name }
+      mailOptions.attachments = attachments.map(att => ({
+        filename: att.name,
+        content: Buffer.from(att.content, 'base64'),
+        contentType: 'application/pdf'
+      }));
     }
 
-    const response = await fetch(BREVO_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': BREVO_API_KEY,
-        'accept': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (response.ok) {
-      console.log(`Email sent via Brevo to ${toEmail}: ${subject}`);
-    } else {
-      const errorText = await response.text();
-      console.warn(`Brevo API returned non-2xx for ${toEmail}. Status: ${response.status}. Error: ${errorText}`);
-    }
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`Email sent via Gmail SMTP to ${toEmail}: ${subject}. Message ID: ${info.messageId}`);
   } catch (err) {
-    console.error(`Failed to send email to ${toEmail}:`, err.message);
+    console.error(`Failed to send email to ${toEmail} via Gmail SMTP:`, err.message);
   }
 }
 

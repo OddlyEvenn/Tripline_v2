@@ -3,6 +3,10 @@ const oracledb = require('oracledb');
 // By default oracledb returns rows as arrays. We want objects.
 oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
 
+// Fetch CLOB columns as strings automatically
+oracledb.fetchAsString = [ oracledb.CLOB ];
+
+
 // Read DB credentials from environment variables
 const dbConfig = {
   user: process.env.DATABASE_USERNAME,

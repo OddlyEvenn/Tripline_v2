@@ -210,6 +210,11 @@ async function confirmBooking(bookingId, stripePaymentIntentId) {
       throw err;
     }
 
+    const booking = bookingRes.rows[0];
+    if (booking.STATUS === 'PAID') {
+      console.log(`Booking ${bookingId} is already PAID. Skipping confirmation.`);
+      return;
+    }
     // Update status to PAID
     await conn.execute(
       `UPDATE bookings 
