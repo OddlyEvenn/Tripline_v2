@@ -126,10 +126,25 @@ export default function SearchResultsPage() {
     const navigate = useNavigate()
     const [routes, setRoutes] = useState([])
     const [loading, setLoading] = useState(false)
-    const [searchParams, setSearchParams] = useState(location.state?.searchParams || null)
+    const getTodayString = () => {
+        const today = new Date()
+        const pad = (n) => n.toString().padStart(2, '0')
+        return `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
+    }
+
+    const [searchParams, setSearchParams] = useState(() => {
+        if (location.state?.searchParams) return location.state.searchParams
+        return {
+            originCity: '',
+            destinationCity: '',
+            travelDate: getTodayString(),
+            optimizationMode: 'BALANCED'
+        }
+    })
     const [selectedRoute, setSelectedRoute] = useState(null)
     const [optMode, setOptMode] = useState(searchParams?.optimizationMode || 'BALANCED')
     const [filters, setFilters] = useState({ mode: searchParams?.transportMode || '', maxPrice: null, maxTransfers: null, maxDuration: null })
+
 
     // Re-search instantly when optMode changes
     useEffect(() => {
@@ -211,8 +226,18 @@ export default function SearchResultsPage() {
                 {!loading && filteredRoutes.length > 0 && (
                     <div className="flex items-center justify-between mb-4 animate-fade-in">
                         <p className="text-gray-500 dark:text-gray-400 text-sm">
-                            <span className="text-gray-900 dark:text-white font-semibold">{filteredRoutes.length}</span> routes found
-                            {searchParams?.originCity && searchParams?.destinationCity && ` for ${searchParams.originCity} → ${searchParams.destinationCity}`}
+                            {searchParams?.originCity && searchParams?.destinationCity ? (
+                                <>
+                                    <span className="text-gray-900 dark:text-white font-semibold">{filteredRoutes.length}</span> routes found for{' '}
+                                    <span className="text-primary-500 dark:text-primary-400 font-semibold">{searchParams.originCity}</span> →{' '}
+                                    <span className="text-primary-500 dark:text-primary-400 font-semibold">{searchParams.destinationCity}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="text-gray-900 dark:text-white font-semibold">✈️ Popular Upcoming Flights</span>
+                                    <span className="text-gray-400 text-xs ml-2">(Showing all routes departing on {searchParams?.travelDate})</span>
+                                </>
+                            )}
                         </p>
                         <div className="flex items-center gap-1.5 text-xs text-gray-600">
                             <BarChart2 className="w-3.5 h-3.5" />
@@ -259,16 +284,16 @@ export default function SearchResultsPage() {
                         <AlertCircle className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                         <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-300 mb-2">No routes found</h3>
                         <p className="text-gray-500 text-sm max-w-md mx-auto">
-                            No trips between <strong className="text-gray-800 dark:text-gray-300">{searchParams.originCity}</strong> and{' '}
-                            <strong className="text-gray-800 dark:text-gray-300">{searchParams.destinationCity}</strong> on this date.
-                            <br />Try a different date or nearby city.
+                            {searchParams.originCity && searchParams.destinationCity ? (
+                                <>
+                                    No trips between <strong className="text-gray-800 dark:text-gray-300">{searchParams.originCity}</strong> and{' '}
+                                    <strong className="text-gray-800 dark:text-gray-300">{searchParams.destinationCity}</strong> on this date.
+                                </>
+                            ) : (
+                                <>No upcoming flights found departing on {searchParams.travelDate}.</>
+                            )}
+                            <br />Try selecting a different date or using the search bar above.
                         </p>
-                    </div>
-                )}
-
-                {!loading && !searchParams && (
-                    <div className="text-center py-20 text-gray-600 text-sm">
-                        Use the search bar above to find routes.
                     </div>
                 )}
 
