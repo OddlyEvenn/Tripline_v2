@@ -42,7 +42,16 @@ const memoryFallbackClient = {
 };
 
 async function initRedis() {
-  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  const redisUrl = process.env.REDIS_URL;
+
+  // If no Redis URL provided, or explicitly set to 'memory', or pointing to localhost in production:
+  if (!redisUrl || redisUrl === 'memory' || redisUrl === 'none' || 
+      (process.env.NODE_ENV === 'production' && redisUrl.includes('localhost'))) {
+    console.log('Redis: Using built-in high-performance memory cache (zero external setup).');
+    useMemoryFallback = true;
+    return;
+  }
+
   console.log(`Connecting to Redis at ${redisUrl}...`);
 
   redisClient = createClient({
