@@ -52,12 +52,21 @@ async function initRedis() {
     return;
   }
 
-  console.log(`Connecting to Redis at ${redisUrl}...`);
+  let activeUrl = redisUrl;
+  // Upstash requires TLS/SSL encryption (rediss://)
+  if (activeUrl.includes('upstash.io') && activeUrl.startsWith('redis://')) {
+    activeUrl = activeUrl.replace('redis://', 'rediss://');
+  }
+
+  console.log(`Connecting to Redis at ${activeUrl.replace(/:[^:@]+@/, ':****@')}...`);
+
+  const isTls = activeUrl.startsWith('rediss://');
 
   redisClient = createClient({
-    url: redisUrl,
+    url: activeUrl,
     socket: {
       connectTimeout: 5000,
+      tls: isTls,
       reconnectStrategy: (retries) => {
         if (retries >= 3) {
           console.warn('Redis reconnection failed 3 times. Falling back to in-memory cache.');
