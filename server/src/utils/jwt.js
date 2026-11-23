@@ -17,11 +17,15 @@ const generateToken = (res, email, role) => {
     { expiresIn: '24h' }
   );
 
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isSecure = process.env.COOKIE_SECURE === 'true' || (isProduction && process.env.COOKIE_SECURE !== 'false');
+  const sameSite = process.env.COOKIE_SAME_SITE || (isSecure ? 'none' : 'lax');
+
   // Set HTTP-only Cookie with JWT
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.COOKIE_SECURE === 'true' || (process.env.NODE_ENV === 'production' && process.env.COOKIE_SECURE !== 'false'),
-    sameSite: 'lax', // prevent CSRF while allowing general redirects
+    secure: isSecure,
+    sameSite: sameSite, // 'none' required for cross-domain (Vercel <-> Render)
     maxAge: ACCESS_TOKEN_EXPIRATION
   });
 
@@ -33,11 +37,15 @@ const generateToken = (res, email, role) => {
  * @param {Response} res Express response object
  */
 const clearToken = (res) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isSecure = process.env.COOKIE_SECURE === 'true' || (isProduction && process.env.COOKIE_SECURE !== 'false');
+  const sameSite = process.env.COOKIE_SAME_SITE || (isSecure ? 'none' : 'lax');
+
   res.cookie(COOKIE_NAME, '', {
     httpOnly: true,
     expires: new Date(0),
-    secure: process.env.COOKIE_SECURE === 'true' || (process.env.NODE_ENV === 'production' && process.env.COOKIE_SECURE !== 'false'),
-    sameSite: 'lax'
+    secure: isSecure,
+    sameSite: sameSite
   });
 };
 

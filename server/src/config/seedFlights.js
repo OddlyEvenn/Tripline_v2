@@ -272,31 +272,19 @@ function tripExists(vehicleId, originId, destId, depTime) {
   return existingTripsSet.has(key);
 }
 
-/** Insert a single trip row. available_seats set to vehicle capacity (180). */
-async function insertTrip(conn, vehicleId, originId, destId, depTime, arrTime, price, distKm) {
-  const res = await conn.execute(
-    `INSERT INTO trips
-       (vehicle_id, origin_station_id, destination_station_id,
-        departure_time, arrivalTime, price, distance,
-        transport_mode, available_seats, is_active)
-     VALUES
-       (:vehicleId, :originId, :destId,
-        :depTime, :arrTime, :price, :dist,
-        'FLIGHT', 180, 1)
-     RETURNING id INTO :id`,
-    {
-      vehicleId,
-      originId,
-      destId,
-      depTime,
-      arrTime,
-      price,
-      dist: distKm,
-      id:   { type: oracledb.NUMBER, dir: oracledb.BIND_OUT },
-    }
-  );
-  await conn.commit();
-  return res.outBinds.id[0];
+const BATCH_INSERT_SQL = `
+  INSERT INTO trips
+    (vehicle_id, origin_station_id, destination_station_id,
+     departure_time, arrivalTime, price, distance,
+     transport_mode, available_seats, is_active)
+  VALUES
+    (:1, :2, :3, :4, :5, :6, :7, 'FLIGHT', 180, 1)
+`;
+
+/** Insert a batch of trip rows using high-speed executeMany */
+async function insertTripsBatch(conn, batch) {
+  if (!batch || batch.length === 0) return;
+  await conn.executeMany(BATCH_INSERT_SQL, batch, { autoCommit: true });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -309,9 +297,11 @@ async function seed() {
   console.log('═══════════════════════════════════════════════════════\n');
 
   await initDb();
-  const conn = await getConnection();
+  let conn;
 
   try {
+    conn = await getConnection();
+
     // ── 1. Carriers ──────────────────────────────────────────────────────────
     console.log('[1/4] Seeding carriers...');
     const carrierIds = {};
@@ -339,7 +329,7 @@ async function seed() {
     }
 
     // ── 4. Trips ──────────────────────────────────────────────────────────────
-    console.log('\n[4/4] Generating trips over next 8 weeks...');
+    console.log('\n[4/4] Generating daily trips over the next 1 year (365 days)...');
 
     // Load existing trips into memory cache for instant idempotency check
     const existingTripsRes = await conn.execute(
@@ -357,25 +347,31 @@ async function seed() {
 
     const now   = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const WEEKS = 8;
+    const DAYS_AHEAD = 365; // Feed data for every day for at least 1 full year!
 
     // Departure hour-minute slots
-    const HUB_SLOTS   = [[7, 0], [15, 0]];   // 07:00 and 15:00 (2 flights/direction/day)
-    const SPOKE_SLOTS  = [[8, 30]];            // 08:30 (1 flight/direction/day)
-
-    // Schedule days of week (ISO 0=Sun…6=Sat)
-    const HUB_DAYS   = [1, 5];  // Monday and Friday
-    const SPOKE_DAYS = [3];      // Wednesday
+    const HUB_SLOTS   = [[7, 0], [16, 30]];   // 2 daily flights per direction between major hubs
+    const SPOKE_SLOTS  = [[9, 0]];            // 1 daily flight per direction between spoke and hub
 
     let created = 0;
     let skipped = 0;
     let vehicleIdx = 0;
+    const batchBuffer = [];
+    const BATCH_SIZE = 500;
+
+    async function flushBatch() {
+      if (batchBuffer.length === 0) return;
+      await insertTripsBatch(conn, batchBuffer);
+      created += batchBuffer.length;
+      batchBuffer.length = 0;
+      process.stdout.write(`  ... ${created} trips inserted (${skipped} skipped)\r`);
+    }
 
     /**
-     * Generate trips for a route pair on specified weekdays/slots for WEEKS weeks.
+     * Generate trips for a route pair for every single day for DAYS_AHEAD days.
      * Picks a vehicle in round-robin order.
      */
-    async function scheduleRoute(fromIata, toIata, weekdays, slots, routeIdx) {
+    async function scheduleRoute(fromIata, toIata, slots, routeIdx) {
       const fromAp = iataMap[fromIata];
       const toAp   = iataMap[toIata];
       if (!fromAp || !toAp) return;
@@ -387,35 +383,31 @@ async function seed() {
       const vId      = vehicleIds[vehicleIdx % vehicleIds.length];
       vehicleIdx++;
 
-      for (let week = 0; week < WEEKS; week++) {
-        for (const dow of weekdays) {             // e.g. [1, 5] = Mon, Fri
-          // Find how many days ahead is the next occurrence of `dow`
-          const daysToDow = ((dow - today.getDay() + 7) % 7) + week * 7;
-          const tripDate  = new Date(today.getTime() + daysToDow * 86400000);
+      for (let dayOffset = 0; dayOffset < DAYS_AHEAD; dayOffset++) {
+        const tripDate = new Date(today.getTime() + dayOffset * 86400000);
 
-          for (let si = 0; si < slots.length; si++) {
-            const [h, m] = slots[si];
-            const depTime = new Date(tripDate);
-            depTime.setHours(h, m, 0, 0);
+        for (let si = 0; si < slots.length; si++) {
+          const [h, m] = slots[si];
+          const depTime = new Date(tripDate);
+          depTime.setHours(h, m, 0, 0);
 
-            // Skip dates already in the past
-            if (depTime <= now) continue;
+          // Skip dates/times already in the past
+          if (depTime <= now) continue;
 
-            const arrTime = new Date(depTime.getTime() + durMins * 60000);
-            const price   = calcPrice(distKm, routeIdx * 7 + week * 3 + si);
+          const arrTime = new Date(depTime.getTime() + durMins * 60000);
+          const price   = calcPrice(distKm, routeIdx * 7 + dayOffset * 3 + si);
 
-            const exists = tripExists(vId, originId, destId, depTime);
-            if (exists) {
-              skipped++;
-              continue;
-            }
+          const exists = tripExists(vId, originId, destId, depTime);
+          if (exists) {
+            skipped++;
+            continue;
+          }
 
-            await insertTrip(conn, vId, originId, destId, depTime, arrTime, price, distKm);
-            created++;
+          existingTripsSet.add(`${vId}_${originId}_${destId}_${depTime.getTime()}`);
+          batchBuffer.push([vId, originId, destId, depTime, arrTime, price, distKm]);
 
-            if (created % 100 === 0) {
-              process.stdout.write(`  ... ${created} trips inserted (${skipped} skipped)\r`);
-            }
+          if (batchBuffer.length >= BATCH_SIZE) {
+            await flushBatch();
           }
         }
       }
@@ -423,23 +415,26 @@ async function seed() {
 
     let routeIdx = 0;
 
-    // ── Hub ↔ Hub (all 15 pairs, both directions, Mon+Fri, 2 slots) ───────────
-    console.log('  Scheduling hub-to-hub routes...');
+    // ── Hub ↔ Hub (all 15 pairs, both directions, every day, 2 slots) ───────────
+    console.log('  Scheduling daily hub-to-hub routes (every day for 365 days)...');
     for (let i = 0; i < HUBS.length; i++) {
       for (let j = i + 1; j < HUBS.length; j++) {
-        await scheduleRoute(HUBS[i].iata, HUBS[j].iata, HUB_DAYS, HUB_SLOTS, routeIdx++);
-        await scheduleRoute(HUBS[j].iata, HUBS[i].iata, HUB_DAYS, HUB_SLOTS, routeIdx++);
+        await scheduleRoute(HUBS[i].iata, HUBS[j].iata, HUB_SLOTS, routeIdx++);
+        await scheduleRoute(HUBS[j].iata, HUBS[i].iata, HUB_SLOTS, routeIdx++);
       }
     }
 
-    // ── Spoke ↔ Hub (each spoke to its assigned hubs, both directions, Wed, 1 slot) ─
-    console.log('\n  Scheduling spoke-to-hub routes...');
+    // ── Spoke ↔ Hub (each spoke to its assigned hubs, both directions, every day, 1 slot) ─
+    console.log('\n  Scheduling daily spoke-to-hub routes (every day for 365 days)...');
     for (const spoke of SPOKES) {
       for (const hubIata of (spoke.hubs || [])) {
-        await scheduleRoute(spoke.iata, hubIata, SPOKE_DAYS, SPOKE_SLOTS, routeIdx++);
-        await scheduleRoute(hubIata, spoke.iata, SPOKE_DAYS, SPOKE_SLOTS, routeIdx++);
+        await scheduleRoute(spoke.iata, hubIata, SPOKE_SLOTS, routeIdx++);
+        await scheduleRoute(hubIata, spoke.iata, SPOKE_SLOTS, routeIdx++);
       }
     }
+
+    // Flush any leftover trips in the batch
+    await flushBatch();
 
     // ── Summary ───────────────────────────────────────────────────────────────
     console.log('\n\n═══════════════════════════════════════════════════════');
@@ -453,8 +448,9 @@ async function seed() {
     console.log('═══════════════════════════════════════════════════════');
     console.log('');
     console.log('  Graph coverage:');
-    console.log('  • Any hub → any hub     : direct flight (Mon/Fri, 2×/day)');
-    console.log('  • Any spoke → any other : max 2 hops via hub (Wed, 1×/day)');
+    console.log('  • Any hub → any hub     : direct flight (Every day, 2×/day for 365 days)');
+    console.log('  • Any spoke → any other : max 2 hops via hub (Every day, 1×/day for 365 days)');
+    console.log('  • 365-day continuous schedule: searches for any date within 1 year will find flights!');
     console.log('');
     console.log('  Dijkstra search is ready. Test it:');
     console.log('  • Mumbai → Delhi     (direct hub-hub)');
@@ -468,11 +464,15 @@ async function seed() {
   } catch (err) {
     console.error('\n✗ Seed failed:', err.message);
     console.error(err);
-    throw err;
   } finally {
-    await conn.close();
+    if (conn) {
+      try { await conn.close(); } catch (_) {}
+    }
     await closeDb();
   }
 }
 
-seed().catch(() => process.exit(1));
+seed().catch((err) => {
+  console.error('\n✗ Fatal error running seed script:', err);
+  process.exit(1);
+});

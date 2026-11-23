@@ -14,7 +14,14 @@ const app = express();
 // Security Middleware
 app.use(helmet());
 
-// Rate Limiting
+// Lightweight Health Check (placed before rateLimiter so pings are never throttled)
+const healthHandler = (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'Tripline API is running' });
+};
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
+
+// Rate Limiting (exempts health checks)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
@@ -39,11 +46,6 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true // Allow cookies to be sent
 }));
-
-// Health Check
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'Tripline API is running' });
-});
 
 // Import Routes
 app.use('/api/auth', require('./routes/authRoutes'));
@@ -71,11 +73,13 @@ if (process.platform === 'win32' && PORT === '1521') {
 
 const { initDb } = require('./config/db');
 const { initRedis } = require('./config/redis');
+const { startKeepAlive } = require('./utils/keepAlive');
 
 initDb()
   .then(() => initRedis())
   .then(() => {
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
+      startKeepAlive();
     });
   });
