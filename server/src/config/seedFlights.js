@@ -241,12 +241,9 @@ async function upsertStation(conn, ap) {
     console.log(`  ↩  Station already exists : [${ap.iata}] ${ap.city}`);
     return existing.rows[0].ID;
   }
-  // Oracle Spatial: longitude → X (first), latitude → Y (second)
   const res = await conn.execute(
-    `INSERT INTO stations (name, city, state, country, type, location, is_active)
-     VALUES (:name, :city, :state, 'India', 'AIRPORT',
-       MDSYS.SDO_GEOMETRY(2001, 4326, MDSYS.SDO_POINT_TYPE(:lon, :lat, NULL), NULL, NULL),
-       1)
+    `INSERT INTO stations (name, city, state, country, type, latitude, longitude, is_active)
+     VALUES (:name, :city, :state, 'India', 'AIRPORT', :lat, :lon, 1)
      RETURNING id INTO :id`,
     {
       name:  ap.name,

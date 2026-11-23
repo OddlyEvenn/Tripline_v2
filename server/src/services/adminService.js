@@ -209,21 +209,22 @@ async function deleteVehicle(id) {
 async function createStation(name, city, state, country, type, latitude, longitude) {
   const conn = await getConnection();
   try {
-    let locationSql = 'NULL';
-    const params = { name, city, state, country: country || 'India', type };
-
-    if (latitude !== null && longitude !== null && latitude !== undefined && longitude !== undefined) {
-      locationSql = `MDSYS.SDO_GEOMETRY(2001, 4326, MDSYS.SDO_POINT_TYPE(:longitude, :latitude, NULL), NULL, NULL)`;
-      params.latitude = latitude;
-      params.longitude = longitude;
-    }
+    const params = {
+      name,
+      city,
+      state,
+      country: country || 'India',
+      type,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null
+    };
 
     const query = `
-      INSERT INTO stations (name, city, state, country, type, location, is_active)
-      VALUES (:name, :city, :state, :country, :type, ${locationSql}, 1)
+      INSERT INTO stations (name, city, state, country, type, latitude, longitude, is_active)
+      VALUES (:name, :city, :state, :country, :type, :latitude, :longitude, 1)
       RETURNING id INTO :id
     `;
-    params.id = { type: require('oracledb').NUMBER, dir: require('oracledb').BIND_OUT };
+    params.id = { type: 1, dir: 3002 };
 
     const result = await conn.execute(query, params);
     await conn.commit();
@@ -256,8 +257,7 @@ async function getAllStations(page, size) {
     // Extracting coordinates from SDO_GEOMETRY if location is present
     const contentRes = await conn.execute(
       `SELECT s.id, s.name, s.city, s.state, s.country, s.type, s.is_active,
-              CASE WHEN s.location IS NOT NULL THEN s.location.sdo_point.y ELSE NULL END AS latitude,
-              CASE WHEN s.location IS NOT NULL THEN s.location.sdo_point.x ELSE NULL END AS longitude
+              s.latitude, s.longitude
        FROM stations s
        ORDER BY s.city ASC, s.name ASC
        OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`,
