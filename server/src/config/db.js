@@ -7,11 +7,19 @@ oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
 oracledb.fetchAsString = [ oracledb.CLOB ];
 
 
+const port = process.env.Port || '1521';
+const protocol = process.env.PROTOCOL || (port === '2484' ? 'tcps' : 'tcp');
+const connectString = process.env.CONNECT_STRING || (
+  protocol === 'tcps'
+    ? `tcps://${process.env.Hostname}:${port}/${process.env.Service_Name}`
+    : `${process.env.Hostname}:${port}/${process.env.Service_Name}`
+);
+
 // Read DB credentials from environment variables
 const dbConfig = {
   user: process.env.DATABASE_USERNAME,
   password: process.env.DATABASE_PASSWORD,
-  connectString: `${process.env.Hostname}:${process.env.Port}/${process.env.Service_Name}`
+  connectString
 };
 
 /**
